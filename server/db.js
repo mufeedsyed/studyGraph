@@ -132,17 +132,23 @@ export function initDatabase() {
       FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS schema_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_nodes_graph ON graph_nodes(graph_id);
     CREATE INDEX IF NOT EXISTS idx_edges_graph ON graph_edges(graph_id);
     CREATE INDEX IF NOT EXISTS idx_docs_subject ON documents(subject_id);
   `);
 
-  // Seed default academic records if empty
-  const countStmt = db.prepare('SELECT COUNT(*) as count FROM subjects');
-  const count = countStmt.get().count;
+  // Run seed ONLY on first install using persistent schema_meta
+  const metaStmt = db.prepare("SELECT value FROM schema_meta WHERE key = 'seeded'");
+  const isSeeded = metaStmt.get();
 
-  if (count === 0) {
+  if (!isSeeded) {
     seedInitialAcademicData();
+    db.prepare("INSERT INTO schema_meta (key, value) VALUES ('seeded', 'true')").run();
   }
 }
 

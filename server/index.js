@@ -281,6 +281,7 @@ app.get('/api/graphs/:id', (req, res) => {
       LEFT JOIN node_document_references r ON r.node_id = n.id
       LEFT JOIN documents d ON d.id = r.document_id
       WHERE n.graph_id = ?
+      GROUP BY n.id
       ORDER BY n.sort_order ASC, n.created_at ASC
     `).all(req.params.id);
 

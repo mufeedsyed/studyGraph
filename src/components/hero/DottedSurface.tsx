@@ -14,9 +14,19 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(true);
 
+  // Interactive cursor tracking
+  const mouseRef = useRef({
+    targetX: -2000,
+    targetY: -2000,
+    currentX: -2000,
+    currentY: -2000,
+    active: false,
+  });
+
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
@@ -26,11 +36,11 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
     let height = (canvas.height = window.innerHeight);
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-    // Grid configuration for 3D perspective surface
-    const cols = 80;
-    const rows = 55;
-    const spacingX = 42;
-    const spacingZ = 45;
+    // Enhanced Grid parameters for a closer, denser, and more prominent surface
+    const cols = 92;
+    const rows = 60;
+    const spacingX = 34; // Closer horizontal spacing
+    const spacingZ = 36; // Closer depth spacing
 
     // Check prefers-reduced-motion
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -50,6 +60,40 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
     resize();
     window.addEventListener('resize', resize);
 
+    // Mouse and Touch listeners
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      mouseRef.current.targetX = e.clientX - rect.left;
+      mouseRef.current.targetY = e.clientY - rect.top;
+      mouseRef.current.active = true;
+    };
+
+    const handleMouseLeave = () => {
+      mouseRef.current.active = false;
+      mouseRef.current.targetX = -2000;
+      mouseRef.current.targetY = -2000;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const rect = container.getBoundingClientRect();
+        mouseRef.current.targetX = e.touches[0].clientX - rect.left;
+        mouseRef.current.targetY = e.touches[0].clientY - rect.top;
+        mouseRef.current.active = true;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      mouseRef.current.active = false;
+      mouseRef.current.targetX = -2000;
+      mouseRef.current.targetY = -2000;
+    };
+
+    container.addEventListener('mousemove', handleMouseMove, { passive: true });
+    container.addEventListener('mouseleave', handleMouseLeave);
+    container.addEventListener('touchmove', handleTouchMove, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd);
+
     // Pause rendering when hero is scrolled out of view
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -58,14 +102,13 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
       { threshold: 0.05 }
     );
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    observer.observe(container);
 
     let time = 0;
-    const fov = 420; // Camera focal length
-    const cameraY = -280; // Elevated camera looking down at the wave surface
-    const cameraZ = -120;
+    // Closer, more immersive camera perspective
+    const fov = 520;
+    const cameraY = -220; // Lower vantage brings wave closer to the viewer
+    const cameraZ = -80;
 
     const render = () => {
       if (!isVisible) {
@@ -77,42 +120,77 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
         time += 0.016;
       }
 
-      // Draw background
+      // Smooth cursor lerp interpolation
+      const mouse = mouseRef.current;
+      mouse.currentX += (mouse.targetX - mouse.currentX) * 0.12;
+      mouse.currentY += (mouse.targetY - mouse.currentY) * 0.12;
+
+      // Draw pure black background
       ctx.fillStyle = '#080808';
       ctx.fillRect(0, 0, width, height);
 
       const centerX = width / 2;
-      const centerY = height * 0.44; // Horizon level
+      const centerY = height * 0.46; // Horizon level
+
+      // Pre-compute mouse interaction values
+      const mX = mouse.currentX;
+      const mY = mouse.currentY;
+      const mouseRadius = 240;
+      const mouseRadiusSq = mouseRadius * mouseRadius;
 
       // Loop through 3D points
       for (let r = 0; r < rows; r++) {
-        const zPos = 180 + r * spacingZ - cameraZ;
+        const zPos = 140 + r * spacingZ - cameraZ;
         const zFactor = fov / (fov + zPos);
 
-        // Horizon fade
+        // Smooth horizon fade with enhanced foreground visibility
         const progressZ = r / rows;
-        const alpha = Math.max(0.12, Math.min(0.95, 1 - progressZ * 0.55));
+        const baseAlpha = Math.max(0.18, Math.min(1.0, 1.05 - progressZ * 0.62));
 
         for (let c = 0; c < cols; c++) {
           const xPos = (c - cols / 2) * spacingX;
 
-          // Double sinusoidal wave equation creates natural flowing 3D ocean ripples
-          const wave1 = Math.sin(c * 0.16 + time * 1.8) * Math.cos(r * 0.14 + time * 1.2) * 44;
-          const wave2 = Math.sin((c + r) * 0.09 - time * 1.4) * 26;
-          const wave3 = Math.cos(c * 0.08 + r * 0.06 + time * 0.9) * 16;
+          // Prominent 3D wave mathematics
+          const wave1 = Math.sin(c * 0.14 + time * 1.7) * Math.cos(r * 0.12 + time * 1.2) * 54;
+          const wave2 = Math.sin((c + r) * 0.08 - time * 1.4) * 30;
+          const wave3 = Math.cos(c * 0.06 + r * 0.05 + time * 0.85) * 18;
           const yPos = cameraY + wave1 + wave2 + wave3;
 
-          // Project (X, Y, Z) into 2D Screen space
-          const screenX = centerX + xPos * zFactor;
-          const screenY = centerY - yPos * zFactor;
+          // Project (X, Y, Z) into 2D Screen coordinates
+          let screenX = centerX + xPos * zFactor;
+          let screenY = centerY - yPos * zFactor;
 
-          if (screenX >= -10 && screenX <= width + 10 && screenY >= -10 && screenY <= height + 10) {
-            // Point size scales with perspective depth
-            const radius = Math.max(0.65, Math.min(2.6, 2.4 * zFactor));
+          // Base dot size: prominent in foreground (up to 3.6px), tapering smoothly to horizon
+          let radius = Math.max(0.9, Math.min(3.6, 3.4 * zFactor));
+          let alpha = baseAlpha;
 
+          // Interactive cursor displacement & ripple calculation
+          const dx = screenX - mX;
+          const dy = screenY - mY;
+          const distSq = dx * dx + dy * dy;
+
+          if (distSq < mouseRadiusSq) {
+            const dist = Math.sqrt(distSq);
+            const proximity = 1 - dist / mouseRadius; // 1 at center, 0 at edge
+            const smoothProximity = proximity * proximity * (3 - 2 * proximity); // Smoothstep curve
+
+            // Organic ripple & displacement away from cursor
+            const ripple = Math.sin(dist * 0.07 - time * 5) * smoothProximity * 28;
+            const pushAngle = Math.atan2(dy, dx);
+            const pushDist = smoothProximity * 22;
+
+            screenX += Math.cos(pushAngle) * pushDist;
+            screenY += Math.sin(pushAngle) * pushDist + ripple;
+
+            // Highlight & enlarge dots near cursor
+            alpha = Math.min(1.0, alpha + smoothProximity * 0.45);
+            radius += smoothProximity * 1.4;
+          }
+
+          if (screenX >= -12 && screenX <= width + 12 && screenY >= -12 && screenY <= height + 12) {
             ctx.beginPath();
             ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(240, 240, 245, ${alpha.toFixed(3)})`;
+            ctx.fillStyle = `rgba(245, 245, 250, ${alpha.toFixed(3)})`;
             ctx.fill();
           }
         }
@@ -125,20 +203,27 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
 
     return () => {
       window.removeEventListener('resize', resize);
+      container.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
       cancelAnimationFrame(animationFrameId);
       observer.disconnect();
     };
   }, [isVisible]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-screen overflow-hidden bg-[#080808] flex flex-col justify-between select-none">
-      {/* 3D Wave Canvas */}
+    <div
+      ref={containerRef}
+      className="relative w-full h-screen overflow-hidden bg-[#080808] flex flex-col justify-between select-none cursor-default"
+    >
+      {/* 3D Wave Canvas with Pointer Event Sensitivity */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 z-0 pointer-events-none"
       />
 
-      {/* Subtle top subtle vignette */}
+      {/* Subtle top/bottom atmospheric vignette */}
       <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-b from-[#080808]/90 via-transparent to-[#080808]" />
 
       {/* Top minimal brand bar */}
@@ -176,7 +261,7 @@ export const DottedSurface: React.FC<DottedSurfaceProps> = ({
       </header>
 
       {/* Center Cinematic Typography Matching Reference */}
-      <div className="relative z-20 flex flex-col items-center justify-center text-center px-4 -mt-10">
+      <div className="relative z-20 flex flex-col items-center justify-center text-center px-4 -mt-10 pointer-events-auto">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-mono tracking-wider text-neutral-300 mb-6 backdrop-blur-md">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>AUTONOMOUS KNOWLEDGE ARCHITECTURE</span>

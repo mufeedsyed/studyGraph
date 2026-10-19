@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Clock, AlertCircle, Circle, FileText, ExternalLink, ChevronRight, Edit3, Eye, BookOpen, Link2 } from 'lucide-react';
+import { Check, Clock, AlertCircle, Circle, FileText, ExternalLink, ChevronRight, Edit3, Eye, BookOpen, Link2, Trash2 } from 'lucide-react';
 import katex from 'katex';
 import { GraphNodeData, NodeStatus, DocumentItem } from '../../types';
 
@@ -9,6 +9,7 @@ interface TopicDetailsPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   onUpdateNode: (nodeId: string, updates: Partial<GraphNodeData>) => void;
+  onDeleteNode?: (nodeId: string) => void;
   onOpenPdfAtPage: (doc: DocumentItem, pageNumber: number) => void;
 }
 
@@ -18,6 +19,7 @@ export const TopicDetailsPanel: React.FC<TopicDetailsPanelProps> = ({
   isOpen,
   onToggle,
   onUpdateNode,
+  onDeleteNode,
   onOpenPdfAtPage,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -27,6 +29,7 @@ export const TopicDetailsPanel: React.FC<TopicDetailsPanelProps> = ({
   const [status, setStatus] = useState<NodeStatus>('not_started');
   const [linkedDocId, setLinkedDocId] = useState<string>('');
   const [linkedPage, setLinkedPage] = useState<number>(1);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (selectedNode) {
@@ -385,6 +388,44 @@ export const TopicDetailsPanel: React.FC<TopicDetailsPanelProps> = ({
             </div>
           )}
         </div>
+
+        {/* Delete Node Section */}
+        {onDeleteNode && (
+          <div className="pt-4 border-t border-white/10">
+            {confirmDelete ? (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2">
+                <p className="text-[11px] text-rose-300 font-medium">
+                  Delete this concept node and all its connections?
+                </p>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => {
+                      onDeleteNode(selectedNode.id);
+                      setConfirmDelete(false);
+                    }}
+                    className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-neutral-300 text-xs font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full py-2 rounded-xl border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/15 text-rose-400 hover:text-rose-300 text-xs font-medium flex items-center justify-center space-x-2 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Concept Node</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

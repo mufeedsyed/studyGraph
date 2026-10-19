@@ -3,17 +3,19 @@ import { Subject, DocumentItem, ConceptGraph, AppStats } from './types';
 import { api } from './api/client';
 import { DottedSurface } from './components/hero/DottedSurface';
 import { FolderLibrary } from './components/folder/FolderLibrary';
+import { FolderContentsView } from './components/folder/FolderContentsView';
 import { GraphWorkspace } from './components/graph/GraphWorkspace';
 import { PdfReaderModal } from './components/reader/PdfReaderModal';
 import { PdfUploadModal } from './components/upload/PdfUploadModal';
-import { Network, FolderKanban, FileText, CheckCircle2, Plus, Sparkles, BookOpen, ChevronRight, X } from 'lucide-react';
+import { Network, CheckCircle2, ChevronRight, X } from 'lucide-react';
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'workspace'>('home');
+  const [view, setView] = useState<'home' | 'folder' | 'workspace'>('home');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [graphs, setGraphs] = useState<ConceptGraph[]>([]);
   const [activeGraph, setActiveGraph] = useState<ConceptGraph | null>(null);
+  const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [stats, setStats] = useState<AppStats | null>(null);
 
   // Modals & Reader state
@@ -42,7 +44,6 @@ export default function App() {
       setGraphs(grs);
       if (st) setStats(st);
 
-      // Default active graph is Physics 2 Syllabus or the first graph
       if (grs.length > 0 && !activeGraph) {
         const fullGraph = await api.getGraph(grs[0].id);
         setActiveGraph(fullGraph);
@@ -61,6 +62,12 @@ export default function App() {
     setReaderDoc(doc);
     setReaderPage(page);
     setIsReaderOpen(true);
+  };
+
+  const handleOpenFolder = (subjectId: string) => {
+    setActiveSubjectId(subjectId);
+    setView('folder');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenGraphWorkspace = async (subjectId?: string) => {
@@ -87,6 +94,26 @@ export default function App() {
     }
   };
 
+  const handleDeleteGraph = async (graphId: string) => {
+    await api.deleteGraph(graphId);
+    const updatedGraphs = graphs.filter((g) => g.id !== graphId);
+    setGraphs(updatedGraphs);
+    if (updatedGraphs.length > 0) {
+      const nextGraph = await api.getGraph(updatedGraphs[0].id);
+      setActiveGraph(nextGraph);
+    } else {
+      setActiveGraph(null);
+      setView('home');
+    }
+    loadData();
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    await api.deleteDocument(docId);
+    setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    loadData();
+  };
+
   const handleCreateSubject = async (data: { title: string; description: string; artwork: string }) => {
     const created = await api.createSubject(data);
     setSubjects((prev) => [created, ...prev]);
@@ -98,10 +125,13 @@ export default function App() {
   };
 
   const handleDeleteSubject = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this folder?')) {
-      await api.deleteSubject(id);
-      setSubjects((prev) => prev.filter((s) => s.id !== id));
+    await api.deleteSubject(id);
+    setSubjects((prev) => prev.filter((s) => s.id !== id));
+    if (activeSubjectId === id) {
+      setView('home');
+      setActiveSubjectId(null);
     }
+    loadData();
   };
 
   const handleCreateGraphSubmit = async (e: React.FormEvent) => {
@@ -123,7 +153,9 @@ export default function App() {
     }
   };
 
-  // If in full-screen Graph Workspace mode
+  // ==========================================
+  // VIEW: FULL-SCREEN GRAPH WORKSPACE
+  // ==========================================
   if (view === 'workspace' && activeGraph) {
     const currentSubject = subjects.find((s) => s.id === activeGraph.subject_id) || null;
     return (
@@ -136,6 +168,7 @@ export default function App() {
           onBackToLibrary={() => setView('home')}
           onSelectGraph={handleSelectGraph}
           onCreateGraph={() => setIsCreateGraphOpen(true)}
+          onDeleteGraph={handleDeleteGraph}
           onOpenPdfAtPage={(doc, page) => handleOpenDocument(doc, page)}
         />
 
@@ -153,10 +186,61 @@ export default function App() {
     );
   }
 
+  // ==========================================
+  // VIEW: DEDICATED FOLDER CONTENTS VIEW
+  // ==========================================
+  if (view === 'folder' && activeSubjectId) {
+    const currentSubject = subjects.find((s) => s.id === activeSubjectId);
+    if (currentSubject) {
+      return (
+        <>
+          <FolderContentsView
+            subject={currentSubject}
+            documents={documents}
+            onBack={() => setView('home')}
+            onOpenPdf={(doc) => handleOpenDocument(doc)}
+            onUploadClick={(subId) => {
+              setUploadSubjectId(subId);
+              setIsUploadOpen(true);
+            }}
+            onOpenGraph={(subId) => handleOpenGraphWorkspace(subId)}
+            onRenameSubject={(s) => {
+              const newTitle = window.prompt('Rename Subject:', s.title);
+              if (newTitle && newTitle.trim()) {
+                handleUpdateSubject(s.id, { title: newTitle.trim() });
+              }
+            }}
+            onDeleteDocument={handleDeleteDocument}
+          />
+
+          {/* PDF Reader Modal */}
+          <PdfReaderModal
+            document={readerDoc}
+            initialPage={readerPage}
+            isOpen={isReaderOpen}
+            onClose={() => setIsReaderOpen(false)}
+          />
+
+          {/* PDF Upload Modal */}
+          <PdfUploadModal
+            isOpen={isUploadOpen}
+            subjects={subjects}
+            initialSubjectId={uploadSubjectId}
+            onClose={() => setIsUploadOpen(false)}
+            onUploadSuccess={(doc) => {
+              setDocuments((prev) => [doc, ...prev]);
+              loadData();
+            }}
+          />
+        </>
+      );
+    }
+  }
+
   function renderCreateGraphModal() {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        <div className="w-full max-w-md bg-[#131317] border border-white/15 rounded-2xl p-6 shadow-2xl">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+        <div className="w-full max-w-md bg-[#131317] border border-white/15 rounded-3xl p-6 shadow-2xl">
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
             <h3 className="text-base font-semibold text-white">New Concept Graph</h3>
             <button onClick={() => setIsCreateGraphOpen(false)} className="text-neutral-400 hover:text-white">
@@ -173,7 +257,7 @@ export default function App() {
                 placeholder="e.g. Electromagnetism & Circuits"
                 value={newGraphTitle}
                 onChange={(e) => setNewGraphTitle(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#1c1c22] border border-white/10 text-white text-sm focus:outline-none focus:border-white/30"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c1c22] border border-white/10 text-white text-sm focus:outline-none focus:border-white/30"
               />
             </div>
 
@@ -182,7 +266,7 @@ export default function App() {
               <select
                 value={newGraphSubjectId}
                 onChange={(e) => setNewGraphSubjectId(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#1c1c22] border border-white/10 text-white text-sm focus:outline-none"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c1c22] border border-white/10 text-white text-sm focus:outline-none"
               >
                 <option value="">No subject (Standalone)</option>
                 {subjects.map((s) => (
@@ -197,13 +281,13 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsCreateGraphOpen(false)}
-                className="px-4 py-2 text-xs text-neutral-400 hover:text-white"
+                className="px-4 py-2 text-xs text-neutral-400 hover:text-white font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-white text-black text-xs font-medium hover:bg-neutral-200"
+                className="px-5 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200 shadow-lg"
               >
                 Create Graph Canvas
               </button>
@@ -214,10 +298,12 @@ export default function App() {
     );
   }
 
-  // Continuous Scrolling Experience (Home View)
+  // ==========================================
+  // VIEW: HOME CONTINUOUS SCROLLING
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#080808] text-[#F3F3F3]">
-      {/* 1. Live Dotted-Wave Hero (Image 1) */}
+      {/* 1. Live Dotted-Wave Hero with Interactive Cursor Displacement */}
       <DottedSurface
         onExploreFolders={() => {
           const el = document.getElementById('folder-library');
@@ -262,15 +348,17 @@ export default function App() {
               <span>{stats?.progressPercentage ?? 50}%</span>
             </p>
             <p className="text-[11px] font-mono uppercase text-neutral-400 mt-0.5">
-              Syllabus Completion
+              Syllabus Mastery
             </p>
           </div>
         </div>
       </div>
 
-      {/* 3. Glossy Folder Library & Stacked Fan-Out (Images 2 & 3) */}
+      {/* 3. Glossy Folder Library & Real Fan-Out Files (Images 2 & 3) */}
       <FolderLibrary
         subjects={subjects}
+        documents={documents}
+        onOpenFolder={handleOpenFolder}
         onOpenDocument={(doc) => handleOpenDocument(doc)}
         onOpenGraphWorkspace={(subjectId) => handleOpenGraphWorkspace(subjectId)}
         onUploadClick={(subId) => {
@@ -309,9 +397,9 @@ export default function App() {
         {/* Workspace Preview Frame */}
         <div
           onClick={() => handleOpenGraphWorkspace()}
-          className="relative w-full h-[480px] rounded-3xl border border-white/15 bg-[#0a0a0d] overflow-hidden shadow-2xl cursor-pointer group hover:border-white/30 transition-all"
+          className="relative w-full h-[460px] rounded-3xl border border-white/15 bg-[#0a0a0d] overflow-hidden shadow-2xl cursor-pointer group hover:border-white/30 transition-all"
         >
-          {/* Subtle dotted grid overlay */}
+          {/* Dotted grid overlay */}
           <div
             className="absolute inset-0 opacity-40"
             style={{

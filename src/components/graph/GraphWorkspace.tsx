@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, Save, Plus, Share2, Layers, Search, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, AlertTriangle, X, Check } from 'lucide-react';
 import { ConceptGraph, GraphNodeData, GraphEdgeData, NodeStatus, DocumentItem, Subject } from '../../types';
 import { SyllabusTree } from './SyllabusTree';
 import { ConceptGraphCanvas } from './ConceptGraphCanvas';
@@ -14,6 +14,7 @@ interface GraphWorkspaceProps {
   onBackToLibrary: () => void;
   onSelectGraph: (graphId: string) => void;
   onCreateGraph: () => void;
+  onDeleteGraph: (graphId: string) => Promise<void>;
   onOpenPdfAtPage: (doc: DocumentItem, pageNumber: number) => void;
 }
 
@@ -25,6 +26,7 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
   onBackToLibrary,
   onSelectGraph,
   onCreateGraph,
+  onDeleteGraph,
   onOpenPdfAtPage,
 }) => {
   const [nodes, setNodes] = useState<GraphNodeData[]>(graph.nodes || []);
@@ -36,6 +38,8 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [isDeleteGraphModalOpen, setIsDeleteGraphModalOpen] = useState(false);
+  const [isDeletingGraph, setIsDeletingGraph] = useState(false);
 
   // Debounced auto-save timer ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,9 +49,10 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
     setNodes(graph.nodes || []);
     setEdges(graph.edges || []);
     if (graph.nodes && graph.nodes.length > 0) {
-      // Find Kinematic Equations or first node
       const defaultNode = graph.nodes.find(n => n.title.includes('Kinematic Equations')) || graph.nodes[0];
       setSelectedNodeId(defaultNode.id);
+    } else {
+      setSelectedNodeId(null);
     }
   }, [graph]);
 
@@ -66,7 +71,7 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
           console.error('Auto-save error:', err);
           setSaveStatus('unsaved');
         }
-      }, 600);
+      }, 500);
     },
     [graph.id]
   );
@@ -125,6 +130,24 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
     [graph.id, nodes, edges, triggerPersist]
   );
 
+  // Delete node handler
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      const updatedNodes = nodes.filter((n) => n.id !== nodeId);
+      const updatedEdges = edges.filter(
+        (e) => e.source_node_id !== nodeId && e.target_node_id !== nodeId
+      );
+
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(updatedNodes[0]?.id || null);
+      }
+      triggerPersist(updatedNodes, updatedEdges);
+    },
+    [nodes, edges, selectedNodeId, triggerPersist]
+  );
+
   // Update node details from right panel
   const handleUpdateNode = useCallback(
     (nodeId: string, updates: Partial<GraphNodeData>) => {
@@ -136,6 +159,36 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
     },
     [edges, triggerPersist]
   );
+
+  // Keyboard shortcut listener (Delete/Backspace to delete selected node)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedNodeId) return;
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return;
+      }
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        handleDeleteNode(selectedNodeId);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNodeId, handleDeleteNode]);
+
+  const handleDeleteGraphConfirm = async () => {
+    try {
+      setIsDeletingGraph(true);
+      await onDeleteGraph(graph.id);
+      setIsDeleteGraphModalOpen(false);
+    } catch (err) {
+      console.error('Delete graph error:', err);
+    } finally {
+      setIsDeletingGraph(false);
+    }
+  };
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
@@ -184,7 +237,7 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
         </div>
 
         {/* Center / Right: Save Status & Actions */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           {/* Save Status Indicator */}
           <div className="flex items-center space-x-2 text-[11px] font-mono text-neutral-400">
             {saveStatus === 'saving' ? (
@@ -212,6 +265,15 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Graph</span>
+          </button>
+
+          {/* Delete Graph Button */}
+          <button
+            onClick={() => setIsDeleteGraphModalOpen(true)}
+            title="Delete this concept graph"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 border border-white/10 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -258,9 +320,48 @@ export const GraphWorkspace: React.FC<GraphWorkspaceProps> = ({
           isOpen={rightPanelOpen}
           onToggle={() => setRightPanelOpen(!rightPanelOpen)}
           onUpdateNode={handleUpdateNode}
+          onDeleteNode={handleDeleteNode}
           onOpenPdfAtPage={onOpenPdfAtPage}
         />
       </div>
+
+      {/* Delete Graph Confirmation Modal */}
+      {isDeleteGraphModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-[#131317] border border-white/15 rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-start space-x-4">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Delete Concept Graph</h3>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Are you sure you want to permanently delete <strong className="text-white">&quot;{graph.title}&quot;</strong>? All nodes, connections, and derivations inside this graph will be permanently removed.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setIsDeleteGraphModalOpen(false)}
+                disabled={isDeletingGraph}
+                className="px-4 py-2 rounded-xl text-neutral-400 hover:text-white text-xs font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteGraphConfirm}
+                disabled={isDeletingGraph}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors shadow-lg"
+              >
+                {isDeletingGraph ? 'Deleting...' : 'Delete Graph'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
