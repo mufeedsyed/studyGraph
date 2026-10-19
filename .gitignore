@@ -1,0 +1,7 @@
+node_modules
+dist
+.DS_Store
+*.local
+studygraph.db-journal
+studygraph.db-shm
+studygraph.db-wal
