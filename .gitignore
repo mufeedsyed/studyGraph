@@ -1,7 +1,35 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# SQLite database (auto-recreated on startup)
+server/studygraph.db
+server/studygraph.db-journal
+server/studygraph.db-shm
+server/studygraph.db-wal
+
+# Uploaded files (user data, not part of source code)
+uploads/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
 *.local
-studygraph.db-journal
-studygraph.db-shm
-studygraph.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
