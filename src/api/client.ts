@@ -1,6 +1,6 @@
 import { Subject, DocumentItem, ConceptGraph, GraphNodeData, GraphEdgeData, AppStats } from '../types';
 
-const API_BASE = 'https://studygraph-api.onrender.com/api';
+const API_BASE = 'https://studygraph-cfh8.com/api';
 //https://studygraph-cfh8.onrender.com/
 
 export const api = {
