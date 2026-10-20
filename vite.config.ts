@@ -9,11 +9,11 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'https://studygraph-cfh8.onrender.com/',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:3001',
+        target: 'https://studygraph-cfh8.onrender.com/',
         changeOrigin: true,
       }
     }
